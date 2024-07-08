@@ -858,21 +858,22 @@ void CGameContext::ConRainbow(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
 	int Victim = pResult->GetVictim();
+	if(Victim < 0 || Victim >= MAX_CLIENTS)
+		return;
+	CPlayer *pPlayer = pSelf->m_apPlayers[Victim];
+	if(!pPlayer)
+		return;
+	pPlayer->m_Rainbow ^= 1;
 
-	static int s_TeeBody = 0;
-	static int s_TeeFeet = 0;
-
-	if(Victim >= 0 && Victim < MAX_CLIENTS && pSelf->m_apPlayers[Victim])
-		pSelf->m_apPlayers[Victim]->m_Rainbow ^= 1;
-	if(pSelf->m_apPlayers[Victim]->m_Rainbow)
+	if(pPlayer->m_Rainbow)
 	{
-		s_TeeBody = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody;
-		s_TeeFeet = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet;
+		pPlayer->m_OriginalTeeInfos.m_ColorBody = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody;
+		pPlayer->m_OriginalTeeInfos.m_ColorFeet = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet;
 	}
 	else
 	{
-		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody = s_TeeBody;
-		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet = s_TeeFeet;
+		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody = pPlayer->m_OriginalTeeInfos.m_ColorBody;
+		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet = pPlayer->m_OriginalTeeInfos.m_ColorFeet;
 	}
 }
 

@@ -229,6 +229,7 @@ public:
 
 	CSaveTee m_LastTeleTee;
 
+	CTeeInfo m_OriginalTeeInfos;
 	bool m_Rainbow = false;
 };
 
