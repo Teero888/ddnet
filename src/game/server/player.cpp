@@ -274,14 +274,6 @@ void CPlayer::Tick()
 			GameServer()->SendEmoticon(GetCid(), EMOTICON_GHOST, -1);
 		}
 	}
-
-	if(m_Rainbow)
-	{
-		const int Color = ColorHSLA(((float)(Server()->Tick() % 256) / 256.f), 1.f, 0.f).Pack(false);
-		m_TeeInfos.m_UseCustomColor = true;
-		m_TeeInfos.m_ColorBody = Color;
-		m_TeeInfos.m_ColorFeet = Color;
-	}
 }
 
 void CPlayer::PostTick()
@@ -330,9 +322,20 @@ void CPlayer::Snap(int SnappingClient)
 	StrToInts(&pClientInfo->m_Clan0, 3, Server()->ClientClan(m_ClientId));
 	pClientInfo->m_Country = Server()->ClientCountry(m_ClientId);
 	StrToInts(&pClientInfo->m_Skin0, 6, m_TeeInfos.m_aSkinName);
-	pClientInfo->m_UseCustomColor = m_TeeInfos.m_UseCustomColor;
-	pClientInfo->m_ColorBody = m_TeeInfos.m_ColorBody;
-	pClientInfo->m_ColorFeet = m_TeeInfos.m_ColorFeet;
+
+	if(m_Rainbow)
+	{
+		const int Color = ColorHSLA(((float)(Server()->Tick() % 256) / 256.f), 1.f, 0.f).Pack(false);
+		pClientInfo->m_UseCustomColor = true;
+		pClientInfo->m_ColorBody = Color;
+		pClientInfo->m_ColorFeet = Color;
+	}
+	else
+	{
+		pClientInfo->m_UseCustomColor = m_TeeInfos.m_UseCustomColor;
+		pClientInfo->m_ColorBody = m_TeeInfos.m_ColorBody;
+		pClientInfo->m_ColorFeet = m_TeeInfos.m_ColorFeet;
+	}
 
 	int SnappingClientVersion = GameServer()->GetClientVersion(SnappingClient);
 	int Latency = SnappingClient == SERVER_DEMO_CLIENT ? m_Latency.m_Min : GameServer()->m_apPlayers[SnappingClient]->m_aCurLatency[m_ClientId];
