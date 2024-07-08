@@ -228,6 +228,8 @@ public:
 	int m_RescueMode;
 
 	CSaveTee m_LastTeleTee;
+
+	bool m_Rainbow = false;
 };
 
 #endif

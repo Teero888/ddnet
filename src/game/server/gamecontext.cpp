@@ -3643,6 +3643,8 @@ void CGameContext::RegisterDDRaceCommands()
 
 	Console()->Register("freezehammer", "v[id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConFreezeHammer, this, "Gives a player Freeze Hammer");
 	Console()->Register("unfreezehammer", "v[id]", CFGFLAG_SERVER | CMDFLAG_TEST, ConUnFreezeHammer, this, "Removes Freeze Hammer from a player");
+
+	Console()->Register("rainbow", "v[id]", CFGFLAG_SERVER, ConRainbow, this, "Gives a person rainbow");
 }
 
 void CGameContext::RegisterChatCommands()

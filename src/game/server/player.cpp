@@ -1,7 +1,9 @@
 /* (c) Magnus Auvinen. See licence.txt in the root of the distribution for more information. */
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "player.h"
+#include "base/color.h"
 #include "entities/character.h"
+#include "game/server/gameworld.h"
 #include "gamecontext.h"
 #include "gamecontroller.h"
 #include "score.h"
@@ -271,6 +273,13 @@ void CPlayer::Tick()
 		{
 			GameServer()->SendEmoticon(GetCid(), EMOTICON_GHOST, -1);
 		}
+	}
+
+	if(m_Rainbow)
+	{
+		const int Color = ColorHSLA(((float)(Server()->Tick() % 256) / 256.f), 1.f, 0.f).Pack(false);
+		m_TeeInfos.m_ColorBody = Color;
+		m_TeeInfos.m_ColorFeet = Color;
 	}
 }
 

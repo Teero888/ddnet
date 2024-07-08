@@ -1,4 +1,5 @@
 /* (c) Shereef Marzouk. See "licence DDRace.txt" and the readme.txt in the root of the distribution for more information. */
+#include "engine/shared/protocol.h"
 #include "gamecontext.h"
 
 #include <engine/antibot.h>
@@ -852,6 +853,29 @@ void CGameContext::ConUnFreezeHammer(IConsole::IResult *pResult, void *pUserData
 
 	pChr->m_FreezeHammer = false;
 }
+
+void CGameContext::ConRainbow(IConsole::IResult *pResult, void *pUserData)
+{
+	CGameContext *pSelf = (CGameContext *)pUserData;
+	int Victim = pResult->GetVictim();
+
+	static int s_TeeBody = 0;
+	static int s_TeeFeet = 0;
+
+	if(Victim >= 0 && Victim < MAX_CLIENTS && pSelf->m_apPlayers[Victim])
+		pSelf->m_apPlayers[Victim]->m_Rainbow ^= 1;
+	if(pSelf->m_apPlayers[Victim]->m_Rainbow)
+	{
+		s_TeeBody = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody;
+		s_TeeFeet = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet;
+	}
+	else
+	{
+		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody = s_TeeBody;
+		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet = s_TeeFeet;
+	}
+}
+
 void CGameContext::ConVoteNo(IConsole::IResult *pResult, void *pUserData)
 {
 	CGameContext *pSelf = (CGameContext *)pUserData;
