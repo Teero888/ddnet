@@ -866,15 +866,9 @@ void CGameContext::ConRainbow(IConsole::IResult *pResult, void *pUserData)
 	pPlayer->m_Rainbow ^= 1;
 
 	if(pPlayer->m_Rainbow)
-	{
-		pPlayer->m_OriginalTeeInfos.m_ColorBody = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody;
-		pPlayer->m_OriginalTeeInfos.m_ColorFeet = pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet;
-	}
+		pPlayer->m_OriginalTeeInfos = pSelf->m_apPlayers[Victim]->m_TeeInfos;
 	else
-	{
-		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorBody = pPlayer->m_OriginalTeeInfos.m_ColorBody;
-		pSelf->m_apPlayers[Victim]->m_TeeInfos.m_ColorFeet = pPlayer->m_OriginalTeeInfos.m_ColorFeet;
-	}
+		pSelf->m_apPlayers[Victim]->m_TeeInfos = pPlayer->m_OriginalTeeInfos;
 }
 
 void CGameContext::ConVoteNo(IConsole::IResult *pResult, void *pUserData)

@@ -278,6 +278,7 @@ void CPlayer::Tick()
 	if(m_Rainbow)
 	{
 		const int Color = ColorHSLA(((float)(Server()->Tick() % 256) / 256.f), 1.f, 0.f).Pack(false);
+		m_TeeInfos.m_UseCustomColor = true;
 		m_TeeInfos.m_ColorBody = Color;
 		m_TeeInfos.m_ColorFeet = Color;
 	}
