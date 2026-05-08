@@ -13,6 +13,7 @@
 
 #include <engine/console.h>
 #include <engine/engine.h>
+#include <engine/font_icons.h>
 #include <engine/graphics.h>
 #include <engine/keys.h>
 #include <engine/shared/config.h>
@@ -64,7 +65,7 @@ void CConsoleLogger::Log(const CLogMessage *pMessage)
 	const CLockScope LockScope(m_ConsoleMutex);
 	if(m_pConsole)
 	{
-		m_pConsole->m_LocalConsole.PrintLine(pMessage->m_aLine, pMessage->m_LineLength, Color);
+		m_pConsole->m_LocalConsole.PrintLine(pMessage->m_aLine, pMessage->m_LineLength, Color, pMessage->m_Level, pMessage->m_aSystem);
 	}
 }
 
@@ -429,7 +430,7 @@ void CGameConsole::CInstance::ExecuteLine(const char *pLine)
 		// print out the user's commands before they get run
 		char aBuf[IConsole::CMDLINE_LENGTH + 3];
 		str_format(aBuf, sizeof(aBuf), "> %s", pLine);
-		m_pGameConsole->PrintLine(m_Type, aBuf);
+		m_pGameConsole->PrintLine(m_Type, aBuf, "console");
 	}
 
 	if(m_Type == CGameConsole::CONSOLETYPE_LOCAL)
@@ -770,14 +771,33 @@ bool CGameConsole::CInstance::OnInput(const IInput::CEvent &Event)
 	return Handled;
 }
 
-void CGameConsole::CInstance::PrintLine(const char *pLine, int Len, ColorRGBA PrintColor)
+void CGameConsole::CInstance::PrintLine(const char *pLine, int Len, ColorRGBA PrintColor, LEVEL Level, const char *pSystem)
 {
+	if(pSystem[0] != '\0')
+	{
+		bool Found = false;
+		for(const auto &System : m_pGameConsole->m_vSystems)
+		{
+			if(str_comp(System.c_str(), pSystem) == 0)
+			{
+				Found = true;
+				break;
+			}
+		}
+		if(!Found)
+		{
+			m_pGameConsole->m_vSystems.emplace_back(pSystem);
+		}
+	}
+
 	// We must ensure that no log messages are printed while owning
 	// m_BacklogPendingLock or this will result in a dead lock.
 	const CLockScope LockScope(m_BacklogPendingLock);
 	CBacklogEntry *pEntry = m_BacklogPending.Allocate(sizeof(CBacklogEntry) + Len);
 	pEntry->m_YOffset = -1.0f;
 	pEntry->m_PrintColor = PrintColor;
+	pEntry->m_Level = Level;
+	str_copy(pEntry->m_aSystem, pSystem, sizeof(pEntry->m_aSystem));
 	pEntry->m_Length = Len;
 	pEntry->m_LineCount = -1;
 	str_copy(pEntry->m_aText, pLine, Len + 1);
@@ -790,6 +810,11 @@ int CGameConsole::CInstance::GetLinesToScroll(int Direction, int LinesToScroll)
 	int LinesToSkip = (Direction == -1 ? m_BacklogCurLine + m_LinesRendered : m_BacklogCurLine - 1);
 	while(Line < LinesToSkip && pEntry)
 	{
+		if(m_pGameConsole->IsFiltered(pEntry->m_aSystem))
+		{
+			pEntry = m_Backlog.Prev(pEntry);
+			continue;
+		}
 		if(pEntry->m_LineCount == -1)
 			UpdateEntryTextAttributes(pEntry);
 		Line += pEntry->m_LineCount;
@@ -799,6 +824,11 @@ int CGameConsole::CInstance::GetLinesToScroll(int Direction, int LinesToScroll)
 	int Amount = maximum(0, Line - LinesToSkip);
 	while(pEntry && (LinesToScroll > 0 ? Amount < LinesToScroll : true))
 	{
+		if(m_pGameConsole->IsFiltered(pEntry->m_aSystem))
+		{
+			pEntry = Direction == -1 ? m_Backlog.Prev(pEntry) : m_Backlog.Next(pEntry);
+			continue;
+		}
 		if(pEntry->m_LineCount == -1)
 			UpdateEntryTextAttributes(pEntry);
 		Amount += pEntry->m_LineCount;
@@ -907,11 +937,17 @@ void CGameConsole::CInstance::UpdateSearch()
 	CBacklogEntry *pEntry = m_Backlog.Last();
 	int EntryLine = 0, LineToScrollStart = 0, LineToScrollEnd = 0;
 
-	for(; pEntry; EntryLine += pEntry->m_LineCount, pEntry = m_Backlog.Prev(pEntry))
+	for(; pEntry; pEntry = m_Backlog.Prev(pEntry))
 	{
+		if(m_pGameConsole->IsFiltered(pEntry->m_aSystem))
+			continue;
+
 		const char *pSearchPos = str_utf8_find_nocase(pEntry->m_aText, pSearchText);
 		if(!pSearchPos)
+		{
+			EntryLine += pEntry->m_LineCount;
 			continue;
+		}
 
 		int EntryLineCount = pEntry->m_LineCount;
 
@@ -1178,6 +1214,20 @@ void CGameConsole::OnRender()
 	if(m_ConsoleState == CONSOLE_CLOSED)
 		return;
 
+	const vec2 WindowSize = vec2(Graphics()->WindowWidth(), Graphics()->WindowHeight());
+	const vec2 ScreenSize = vec2(Screen.w, Screen.h);
+	Ui()->UpdateTouchState(m_TouchState);
+	const auto &&GetMousePosition = [&]() -> vec2 {
+		if(m_TouchState.m_PrimaryPressed)
+		{
+			return m_TouchState.m_PrimaryPosition * ScreenSize;
+		}
+		else
+		{
+			return Input()->NativeMousePos() / WindowSize * ScreenSize;
+		}
+	};
+
 	if(m_ConsoleState == CONSOLE_OPEN)
 		Input()->MouseModeAbsolute();
 
@@ -1245,19 +1295,6 @@ void CGameConsole::OnRender()
 		TextRender()->TextEx(&PromptCursor, aPrompt);
 
 		// check if mouse is pressed
-		const vec2 WindowSize = vec2(Graphics()->WindowWidth(), Graphics()->WindowHeight());
-		const vec2 ScreenSize = vec2(Screen.w, Screen.h);
-		Ui()->UpdateTouchState(m_TouchState);
-		const auto &&GetMousePosition = [&]() -> vec2 {
-			if(m_TouchState.m_PrimaryPressed)
-			{
-				return m_TouchState.m_PrimaryPosition * ScreenSize;
-			}
-			else
-			{
-				return Input()->NativeMousePos() / WindowSize * ScreenSize;
-			}
-		};
 		if(!pConsole->m_MouseIsPress && (m_TouchState.m_PrimaryPressed || Input()->NativeMousePressed(1)))
 		{
 			pConsole->m_MouseIsPress = true;
@@ -1266,7 +1303,53 @@ void CGameConsole::OnRender()
 		if(pConsole->m_MouseIsPress && !m_TouchState.m_PrimaryPressed && !Input()->NativeMousePressed(1))
 		{
 			pConsole->m_MouseIsPress = false;
-			if(m_ConsoleState == CONSOLE_OPEN && pConsole->m_MousePress.y > ConsoleHeight + 1.0f && pConsole->m_MouseRelease.y > ConsoleHeight + 1.0f) // for border
+
+			CUIRect FilterButton;
+			FilterButton.x = Screen.w - 100.0f;
+			FilterButton.y = 20.0f;
+			FilterButton.w = 90.0f;
+			FilterButton.h = 18.0f;
+
+			bool ClickHandled = false;
+			if(FilterButton.Inside(pConsole->m_MousePress) && FilterButton.Inside(pConsole->m_MouseRelease))
+			{
+				m_FilterMenuOpened = !m_FilterMenuOpened;
+				ClickHandled = true;
+			}
+			else if(m_FilterMenuOpened)
+			{
+				float MenuWidth = 150.0f;
+				float ItemHeight = 20.0f;
+				float Margin = 5.0f;
+				float Spacing = 2.0f;
+				float MenuHeight = m_vSystems.size() * ItemHeight + maximum<int>(0, (int)m_vSystems.size() - 1) * Spacing + Margin * 2.0f;
+				CUIRect MenuRect = {Screen.w - MenuWidth - 5.0f, FilterButton.y + FilterButton.h + 5.0f, MenuWidth, MenuHeight};
+
+				if(MenuRect.Inside(pConsole->m_MousePress) && MenuRect.Inside(pConsole->m_MouseRelease))
+				{
+					MenuRect.Margin(Margin, &MenuRect);
+
+					for(size_t i = 0; i < m_vSystems.size(); ++i)
+					{
+						CUIRect ItemRect;
+						MenuRect.HSplitTop(ItemHeight, &ItemRect, &MenuRect);
+						if(ItemRect.Inside(pConsole->m_MousePress) && ItemRect.Inside(pConsole->m_MouseRelease))
+						{
+							ToggleFilter(m_vSystems[i].c_str());
+							ClickHandled = true;
+							break;
+						}
+						if(i < m_vSystems.size() - 1)
+							MenuRect.HSplitTop(Spacing, nullptr, &MenuRect);
+					}
+				}
+				else
+				{
+					m_FilterMenuOpened = false;
+				}
+			}
+
+			if(!ClickHandled && m_ConsoleState == CONSOLE_OPEN && pConsole->m_MousePress.y > ConsoleHeight + 1.0f && pConsole->m_MouseRelease.y > ConsoleHeight + 1.0f) // for border
 				Toggle(m_ConsoleType);
 		}
 		if(pConsole->m_MouseIsPress)
@@ -1458,6 +1541,11 @@ void CGameConsole::OnRender()
 
 		while(pEntry)
 		{
+			if(IsFiltered(pEntry->m_aSystem))
+			{
+				pEntry = pConsole->m_Backlog.Prev(pEntry);
+				continue;
+			}
 			if(pEntry->m_LineCount == -1)
 				pConsole->UpdateEntryTextAttributes(pEntry);
 
@@ -1607,6 +1695,69 @@ void CGameConsole::OnRender()
 		// render version
 		str_copy(aBuf, "v" GAME_VERSION " on " CONF_PLATFORM_STRING " " CONF_ARCH_STRING);
 		TextRender()->Text(Screen.w - TextRender()->TextWidth(FONT_SIZE, aBuf) - 10.0f, FONT_SIZE / 2.f, FONT_SIZE, aBuf);
+
+		if(m_ConsoleState == CONSOLE_OPEN)
+		{
+			CUIRect FilterButton;
+			FilterButton.x = Screen.w - 100.0f;
+			FilterButton.y = 20.0f;
+			FilterButton.w = 90.0f;
+			FilterButton.h = 18.0f;
+
+			vec2 MousePos = GetMousePosition();
+			bool Hovered = FilterButton.Inside(MousePos);
+
+			// Draw Filter Button
+			ColorRGBA ButtonColor = Hovered ? ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f) : ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f);
+			FilterButton.Draw(ButtonColor, IGraphics::CORNER_ALL, 5.0f);
+
+			CUIRect LabelRect;
+			FilterButton.Margin(2.0f, &LabelRect);
+			Ui()->DoLabel(&LabelRect, Localize("Filters"), FONT_SIZE, TEXTALIGN_ML);
+
+			// Dropdown icon
+			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
+			Ui()->DoLabel(&LabelRect, FontIcon::CIRCLE_CHEVRON_DOWN, FONT_SIZE, TEXTALIGN_MR);
+			TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
+
+			if(m_FilterMenuOpened)
+			{
+				float MenuWidth = 150.0f;
+				float ItemHeight = 20.0f;
+				float Margin = 5.0f;
+				float Spacing = 2.0f;
+				float MenuHeight = m_vSystems.size() * ItemHeight + maximum<int>(0, (int)m_vSystems.size() - 1) * Spacing + Margin * 2.0f;
+				CUIRect MenuRect = {Screen.w - MenuWidth - 5.0f, FilterButton.y + FilterButton.h + 5.0f, MenuWidth, MenuHeight};
+
+				// Draw menu background
+				MenuRect.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.8f), IGraphics::CORNER_ALL, 5.0f);
+				MenuRect.Margin(2.0f, &MenuRect);
+				MenuRect.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 0.95f), IGraphics::CORNER_ALL, 4.0f);
+
+				MenuRect.Margin(Margin - 2.0f, &MenuRect);
+
+				for(size_t i = 0; i < m_vSystems.size(); ++i)
+				{
+					CUIRect ItemRect;
+					MenuRect.HSplitTop(ItemHeight, &ItemRect, &MenuRect);
+					const char *pSystem = m_vSystems[i].c_str();
+					bool Filtered = IsFiltered(pSystem);
+					bool ItemHovered = ItemRect.Inside(MousePos);
+
+					float Alpha = ItemHovered ? 0.6f : 0.4f;
+					if(Filtered) Alpha *= 0.25f;
+
+					ItemRect.Draw(ColorRGBA(1.0f, 1.0f, 1.0f, Alpha), IGraphics::CORNER_ALL, 5.0f);
+
+					CUIRect ItemLabelRect;
+					ItemRect.Margin(5.0f, &ItemLabelRect);
+					Ui()->DoLabel(&ItemLabelRect, pSystem, FONT_SIZE, TEXTALIGN_ML);
+
+					if(i < m_vSystems.size() - 1)
+						MenuRect.HSplitTop(Spacing, nullptr, &MenuRect);
+				}
+			}
+		}
 	}
 }
 
@@ -1619,6 +1770,7 @@ bool CGameConsole::OnInput(const IInput::CEvent &Event)
 	// accept input when opening, but not at first frame to discard the input that caused the console to open
 	if(m_ConsoleState != CONSOLE_OPEN && (m_ConsoleState != CONSOLE_OPENING || m_StateChangeEnd == Client()->GlobalTime() + m_StateChangeDuration))
 		return false;
+
 	if((Event.m_Key >= KEY_F1 && Event.m_Key <= KEY_F12) || (Event.m_Key >= KEY_F13 && Event.m_Key <= KEY_F24))
 		return false;
 
@@ -1655,14 +1807,12 @@ void CGameConsole::Toggle(int Type)
 
 		if(m_ConsoleState == CONSOLE_CLOSED || m_ConsoleState == CONSOLE_CLOSING)
 		{
-			Ui()->SetEnabled(false);
 			m_ConsoleState = CONSOLE_OPENING;
 		}
 		else
 		{
 			ConsoleForType(Type)->m_Input.Deactivate();
 			Input()->MouseModeRelative();
-			Ui()->SetEnabled(true);
 			GameClient()->OnRelease();
 			m_ConsoleState = CONSOLE_CLOSING;
 		}
@@ -1749,12 +1899,33 @@ void CGameConsole::RequireUsername(bool UsernameReq)
 	}
 }
 
-void CGameConsole::PrintLine(int Type, const char *pLine)
+void CGameConsole::PrintLine(int Type, const char *pLine, const char *pSystem)
 {
 	if(Type == CONSOLETYPE_LOCAL)
-		m_LocalConsole.PrintLine(pLine, str_length(pLine), TextRender()->DefaultTextColor());
+		m_LocalConsole.PrintLine(pLine, str_length(pLine), TextRender()->DefaultTextColor(), LEVEL_INFO, pSystem);
 	else if(Type == CONSOLETYPE_REMOTE)
-		m_RemoteConsole.PrintLine(pLine, str_length(pLine), TextRender()->DefaultTextColor());
+		m_RemoteConsole.PrintLine(pLine, str_length(pLine), TextRender()->DefaultTextColor(), LEVEL_INFO, pSystem);
+}
+
+bool CGameConsole::IsFiltered(const char *pSystem) const
+{
+	for(const auto &Excluded : m_vExcludedSystems)
+		if(str_comp(Excluded.c_str(), pSystem) == 0)
+			return true;
+	return false;
+}
+
+void CGameConsole::ToggleFilter(const char *pSystem)
+{
+	for(auto it = m_vExcludedSystems.begin(); it != m_vExcludedSystems.end(); ++it)
+	{
+		if(str_comp(it->c_str(), pSystem) == 0)
+		{
+			m_vExcludedSystems.erase(it);
+			return;
+		}
+	}
+	m_vExcludedSystems.emplace_back(pSystem);
 }
 
 void CGameConsole::OnConsoleInit()

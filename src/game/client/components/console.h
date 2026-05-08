@@ -4,6 +4,7 @@
 #define GAME_CLIENT_COMPONENTS_CONSOLE_H
 
 #include <base/lock.h>
+#include <base/log.h>
 
 #include <engine/console.h>
 #include <engine/shared/ringbuffer.h>
@@ -33,6 +34,8 @@ class CGameConsole : public CComponent
 			float m_YOffset;
 			int m_LineCount;
 			ColorRGBA m_PrintColor;
+			LEVEL m_Level;
+			char m_aSystem[32];
 			size_t m_Length;
 			char m_aText[1];
 		};
@@ -114,7 +117,7 @@ class CGameConsole : public CComponent
 		void ExecuteLine(const char *pLine);
 
 		bool OnInput(const IInput::CEvent &Event);
-		void PrintLine(const char *pLine, int Len, ColorRGBA PrintColor) REQUIRES(!m_BacklogPendingLock);
+		void PrintLine(const char *pLine, int Len, ColorRGBA PrintColor, LEVEL Level = LEVEL_INFO, const char *pSystem = "") REQUIRES(!m_BacklogPendingLock);
 		int GetLinesToScroll(int Direction, int LinesToScroll);
 		void ScrollToCenter(int StartLine, int EndLine);
 		void Dump() REQUIRES(!m_BacklogPendingLock);
@@ -166,6 +169,10 @@ class CGameConsole : public CComponent
 	bool m_WantsSelectionCopy = false;
 	CUi::CTouchState m_TouchState;
 
+	bool m_FilterMenuOpened = false;
+	std::vector<std::string> m_vSystems;
+	std::vector<std::string> m_vExcludedSystems;
+
 	static constexpr ColorRGBA ms_SearchHighlightColor = ColorRGBA(1.0f, 0.0f, 0.0f, 1.0f);
 	static constexpr ColorRGBA ms_SearchSelectedColor = ColorRGBA(1.0f, 1.0f, 0.0f, 1.0f);
 
@@ -196,7 +203,7 @@ public:
 	~CGameConsole() override;
 	int Sizeof() const override { return sizeof(*this); }
 
-	void PrintLine(int Type, const char *pLine);
+	void PrintLine(int Type, const char *pLine, const char *pSystem = "");
 	void RequireUsername(bool UsernameReq);
 
 	void OnStateChange(int NewState, int OldState) override;
@@ -210,6 +217,9 @@ public:
 
 	void Toggle(int Type);
 	bool IsActive() const { return m_ConsoleState != CONSOLE_CLOSED; }
+
+	bool IsFiltered(const char *pSystem) const;
+	void ToggleFilter(const char *pSystem);
 
 	void ForceUpdateRemoteCompletionSuggestions();
 };

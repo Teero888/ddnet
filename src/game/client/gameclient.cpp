@@ -1442,7 +1442,7 @@ void CGameClient::OnRconType(bool UsernameReq)
 
 void CGameClient::OnRconLine(const char *pLine)
 {
-	m_GameConsole.PrintLine(CGameConsole::CONSOLETYPE_REMOTE, pLine);
+	m_GameConsole.PrintLine(CGameConsole::CONSOLETYPE_REMOTE, pLine, "remote");
 }
 
 void CGameClient::ProcessEvents()
