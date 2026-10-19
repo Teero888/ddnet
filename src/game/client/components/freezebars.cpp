@@ -8,16 +8,42 @@ void CFreezeBars::RenderFreezeBar(const int ClientId)
 	const float FreezeBarHalfWidth = 32.0f;
 	const float FreezeBarHeight = 16.0f;
 
-	// pCharacter contains the predicted character for local players or the last snap for players who are spectated
-	CCharacterCore *pCharacter = &GameClient()->m_aClients[ClientId].m_Predicted;
+	const CGameClient::CClientData &ClientData = GameClient()->m_aClients[ClientId];
+	const CGameClient::CSnapState::CCharacterInfo &SnapCharacter = GameClient()->m_Snap.m_aCharacters[ClientId];
 
-	if(pCharacter->m_FreezeEnd <= 0 || pCharacter->m_FreezeStart == 0 || pCharacter->m_FreezeEnd <= pCharacter->m_FreezeStart || !GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo || (pCharacter->m_IsInFreeze && g_Config.m_ClFreezeBarsAlphaInsideFreeze == 0))
+	// only show the freeze bar once the server confirmed the freeze, so overpredicted freezes are not shown
+	if(!SnapCharacter.m_HasExtendedDisplayInfo || SnapCharacter.m_ExtendedData.m_FreezeEnd <= 0)
 	{
 		return;
 	}
 
-	const int64_t Max = (int64_t)pCharacter->m_FreezeEnd - pCharacter->m_FreezeStart;
-	float FreezeProgress = std::clamp<int64_t>(Max - ((int64_t)Client()->GameTick(g_Config.m_ClDummy) - pCharacter->m_FreezeStart), 0, Max) / (float)Max;
+	// use the predicted freeze time for predicted characters, so the bar runs out when the rendered tee unfreezes
+	int FreezeStart;
+	int FreezeEnd;
+	bool IsInFreeze;
+	int Tick;
+	if(ClientData.m_IsPredicted)
+	{
+		FreezeStart = ClientData.m_Predicted.m_FreezeStart;
+		FreezeEnd = ClientData.m_Predicted.m_FreezeEnd;
+		IsInFreeze = ClientData.m_Predicted.m_IsInFreeze;
+		Tick = ClientData.m_IsPredictedLocal ? Client()->PredGameTick(g_Config.m_ClDummy) : Client()->GetPredictionTick();
+	}
+	else
+	{
+		FreezeStart = SnapCharacter.m_ExtendedData.m_FreezeStart;
+		FreezeEnd = SnapCharacter.m_ExtendedData.m_FreezeEnd;
+		IsInFreeze = SnapCharacter.m_ExtendedData.m_Flags & CHARACTERFLAG_IN_FREEZE;
+		Tick = Client()->GameTick(g_Config.m_ClDummy);
+	}
+
+	if(FreezeEnd <= 0 || FreezeStart == 0 || FreezeEnd <= FreezeStart || (IsInFreeze && g_Config.m_ClFreezeBarsAlphaInsideFreeze == 0))
+	{
+		return;
+	}
+
+	const int64_t Max = (int64_t)FreezeEnd - FreezeStart;
+	float FreezeProgress = std::clamp<int64_t>(Max - ((int64_t)Tick - FreezeStart), 0, Max) / (float)Max;
 	if(FreezeProgress <= 0.0f)
 	{
 		return;
@@ -28,7 +54,7 @@ void CFreezeBars::RenderFreezeBar(const int ClientId)
 	Position.y += 32;
 
 	float Alpha = GameClient()->IsOtherTeam(ClientId) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
-	if(pCharacter->m_IsInFreeze)
+	if(IsInFreeze)
 	{
 		Alpha *= g_Config.m_ClFreezeBarsAlphaInsideFreeze / 100.0f;
 	}
